@@ -1,57 +1,90 @@
 pipeline {
-    agent any
+    agent any  // Run on any available Jenkins agent
 
     environment {
-        // Adjust JAVA_HOME path if Jenkins node uses a different one
-        JAVA_HOME = '/usr/lib/jvm/java-21-openjdk-amd64'
-        PATH = "${JAVA_HOME}/bin:${PATH}"
+        // DockerHub credentials
+        DOCKERHUB_USER = 'rahmamessadi23'               // <-- Replace with your DockerHub username
+        IMAGE_NAME = 'devops'               // <-- Your Docker image name
+        IMAGE_TAG = 'latest'                   // <-- Tag for the Docker image
+
+        // Jenkins credentials ID for DockerHub (Username with password)
+        DOCKERHUB_CREDENTIALS = 'rahmamessadi23'
     }
 
     stages {
+
+        // ---------------------------------
         stage('Checkout') {
             steps {
-                echo "Cloning repository..."
+                echo "📥 Cloning repository..."
                 git branch: 'main', url: 'https://github.com/Messaadi-Rahma/Devops.git'
             }
         }
 
-        stage('Build') {
+        // ---------------------------------
+        stage('Build with Maven') {
             steps {
-                echo "Building (skip tests)..."
+                echo "🛠️ Building Java app (skip tests)..."
+                // Build the project and skip tests
                 sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Test') {
+        // ---------------------------------
+        stage('Run Tests') {
             steps {
-                echo "Running tests..."
+                echo "🧪 Running unit tests..."
+                // Run unit tests
                 sh 'mvn test'
             }
         }
 
-        stage('Package') {
+        // ---------------------------------
+        stage('Package Application') {
             steps {
-                echo "Packaging application..."
+                echo "📦 Packaging application..."
+                // Build the final JAR package
                 sh 'mvn package'
             }
         }
 
-        stage('Archive') {
+        // ---------------------------------
+        stage('Build Docker Image') {
             steps {
-                echo "Archiving .jar..."
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                echo "🐳 Building Docker image..."
+                // Build the Docker image using Dockerfile in the repo
+                script {
+                    sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
+                }
             }
         }
 
-        // You can add a Deploy stage later if needed
+        // ---------------------------------
+        stage('Push Docker Image') {
+            steps {
+                echo "📤 Pushing Docker image to DockerHub..."
+                script {
+                    // Use credentials stored in Jenkins
+                    withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        sh """
+                        echo "$PASS" | docker login -u "$USER" --password-stdin
+                        docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker logout
+                        """
+                    }
+                }
+            }
+        }
+
     }
 
+    // ---------------------------------
     post {
         success {
-            echo "✅ Build succeeded"
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Build failed"
+            echo "❌ Pipeline failed! Check logs for errors."
         }
     }
 }
